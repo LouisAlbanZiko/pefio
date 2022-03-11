@@ -9,11 +9,23 @@ CF_FileView *cf_file_view_open(CF_File *file, uint64_t start, uint64_t size)
 	view->size = (size == 0) * (file->size - start) + size;
 	view->data = (uint8_t *)file->data + start;
 
+	cc_unordered_set_insert(file->views, &view);
+
 	return view;
 }
 
 uint64_t cf_file_view_close(CF_FileView *view)
 {
+	for (uint64_t i = 0; i < cc_unordered_set_count(view->file->views); i++)
+	{
+		CF_FileView *_view = *((CF_FileView **)cc_unordered_set_get(view->file->views, i));
+		if (view == _view)
+		{
+			cc_unordered_set_remove(view->file->views, i);
+			break;
+		}
+	}
+
 	free(view);
 
 	return 1;

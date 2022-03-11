@@ -115,6 +115,7 @@ CF_File *cf_file_open(CC_String path)
 	file->handle_mapping = handle_mapping;
 	file->size = file_size;
 	file->data = data;
+	file->views = cc_unordered_set_create(sizeof(CF_FileView *), 16);
 
 	return file;
 
@@ -207,6 +208,12 @@ uint64_t cf_file_resize(CF_File *file, uint64_t size)
 		uint64_t error = GetLastError();
 		printf("Error_code = %llu\n", error);
 		return 0;
+	}
+
+	for (CF_FileView **view_ptr = cc_unordered_set_iterator_begin(file->views); view_ptr != cc_unordered_set_iterator_end(file->views); view_ptr = cc_unordered_set_iterator_next(file->views, view_ptr))
+	{
+		CF_FileView *view = *view_ptr;
+		view->data = (uint8_t *)file->data + view->start;
 	}
 
 	return 1;

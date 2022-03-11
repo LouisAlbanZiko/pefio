@@ -22,6 +22,7 @@ typedef struct CF_File
 	HANDLE handle_mapping;
 	uint64_t size;
 	void *data;
+	CC_UnorderedSet *views;
 } CF_File;
 
 typedef struct CF_FileView
