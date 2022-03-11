@@ -2,6 +2,17 @@
 
 #include "internal.h"
 
+uint64_t cf_directory_exists(CC_String _path)
+{
+	CC_String path = cc_string_copy(_path);
+
+	DWORD dwAttrib = GetFileAttributesA(path.data);
+
+	cc_string_destroy(path);
+
+	return (dwAttrib != INVALID_FILE_ATTRIBUTES && (dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
+}
+
 uint64_t cf_directory_create(CC_String path)
 {
 	char *c_path = malloc(path.length + 1);

@@ -17,6 +17,8 @@ uint64_t cf_directory_destroy(CC_String path);
 
 // file
 
+uint64_t cf_file_exists(CC_String path);
+
 uint64_t cf_file_create(CC_String path, uint64_t size);
 uint64_t cf_file_destroy(CC_String path);
 
