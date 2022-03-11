@@ -67,6 +67,6 @@ typedef enum CF_ErrorType
 	CF_ERROR_TYPE_FILE_NOT_FOUND
 } CF_ErrorType;
 
-CF_Error cf_error_message();
+CF_Error cf_get_last_error();
 
 #endif

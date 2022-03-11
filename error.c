@@ -5,7 +5,7 @@
 uint64_t _cf_error_type = 0;
 char _cf_error_message[1024];
 
-CF_Error cf_error_message()
+CF_Error cf_get_last_error()
 {
 	CF_Error error =
 	{
