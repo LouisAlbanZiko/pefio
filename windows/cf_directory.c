@@ -2,7 +2,7 @@
 
 #include "internal.h"
 
-uint64_t cf_directory_create(CM_String path)
+uint64_t cf_directory_create(CC_String path)
 {
 	char *c_path = malloc(path.length + 1);
 	for (uint64_t i = 0; i < path.length; i++)
@@ -15,7 +15,7 @@ uint64_t cf_directory_create(CM_String path)
 	return success;
 }
 
-uint64_t cf_directory_destroy(CM_String path)
+uint64_t cf_directory_destroy(CC_String path)
 {
 	char *c_path = malloc(path.length + 1);
 	for (uint64_t i = 0; i < path.length; i++)

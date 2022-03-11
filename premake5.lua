@@ -6,10 +6,10 @@ project "c_file"
 	files { "**.c", "**.h" }
 	includedirs { "../_vendor", "../", "." }
 
-	links { "c_log", "c_mem" }
+	links { "c_log", "c_core" }
 
 	filter "configurations:Debug"
-		defines { "CM_DEBUG" }
+		defines { "CC_DEBUG" }
 
 	filter "system:linux"
 		links { "m" }

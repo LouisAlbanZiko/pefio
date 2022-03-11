@@ -16,10 +16,10 @@
 #elif defined _WIN32 || defined WIN32
 typedef struct CF_File
 {
-	CM_String path;
+	CC_String path;
 	HANDLE handle_file;
 	uint64_t size;
-	CM_UnorderedSet *file_views;
+	CC_UnorderedSet *file_views;
 } CF_File;
 
 typedef struct CF_FileView
@@ -33,7 +33,7 @@ typedef struct CF_FileView
 
 typedef struct CF_TableFile
 {
-	CM_String path;
+	CC_String path;
 	HANDLE file_handle;
 	HANDLE file_mapping;
 } CF_TableFile;

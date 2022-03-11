@@ -6,21 +6,21 @@
 #include <string.h>
 #include <stdio.h>
 
-#include <c_mem/c_mem.h>
+#include <c_core/c_core.h>
 
 // directory
 
-uint64_t cf_directory_create(CM_String path);
-uint64_t cf_directory_destroy(CM_String path);
+uint64_t cf_directory_create(CC_String path);
+uint64_t cf_directory_destroy(CC_String path);
 
 // file
 
-uint64_t cf_file_create(CM_String path);
-uint64_t cf_file_destroy(CM_String path);
+uint64_t cf_file_create(CC_String path);
+uint64_t cf_file_destroy(CC_String path);
 
 typedef struct CF_File CF_File;
 
-CF_File *cf_file_open(CM_String path);
+CF_File *cf_file_open(CC_String path);
 uint64_t cf_file_close(CF_File *file);
 
 uint64_t cf_file_resize(CF_File *file, uint64_t new_size);
@@ -38,11 +38,21 @@ uint64_t cf_file_view_flush(CF_FileView *view);
 uint64_t cf_file_view_start_get(CF_FileView *view);
 uint64_t cf_file_view_size_get(CF_FileView *view);
 
+// util
+typedef struct CF_Buffer
+{
+	uint64_t size;
+	void *data;
+} CF_Buffer;
+
+uint64_t cf_file_load(CF_File *file, uint64_t size, void *data);
+uint64_t cf_file_dump(CF_File *file, uint64_t size, const void *data);
+
 // error
 typedef struct CF_Error
 {
 	uint64_t error_type;
-	CM_String message;
+	CC_String message;
 } CF_Error;
 
 typedef enum CF_ErrorType
@@ -58,13 +68,5 @@ typedef enum CF_ErrorType
 } CF_ErrorType;
 
 CF_Error cf_error_message();
-
-
-
-// table file
-typedef struct CF_TableFile CF_TableFile;
-
-CF_TableFile *cf_table_file_create();
-void cf_table_file_destroy(CF_TableFile *file);
 
 #endif
