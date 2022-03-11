@@ -2,21 +2,38 @@
 
 #include "internal.h"
 
-uint64_t cf_file_create(CC_String path)
+uint64_t cf_file_create(CC_String path, uint64_t size)
 {
 	CC_String copy = cc_string_copy(path);
 
-	HANDLE handle = CreateFileA(copy.data, GENERIC_READ, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+	HANDLE handle = CreateFileA(copy.data, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
 
 	cc_string_destroy(copy);
 	
 	if (handle == INVALID_HANDLE_VALUE)
 	{
-		_cf_make_error(CF_ERROR_TYPE_FILE_CREATION_FAILED, "Failed to create file: %s.", copy.data);
+		uint64_t win32_error_code = GetLastError();
+		_cf_make_error(CF_ERROR_TYPE_FILE_CREATION_FAILED, "Failed to create file: %s. win32 error %llu", copy.data, win32_error_code);
 		return 0;
 	}
 	else
 	{
+		// resize file
+		LARGE_INTEGER li_size = { .QuadPart = size };
+		if (!SetFilePointerEx(handle, li_size, (LARGE_INTEGER *)&size, FILE_BEGIN))
+		{
+			uint64_t win32_error_code = GetLastError();
+			_cf_make_error(CF_ERROR_TYPE_FILE_RESIZE_FAILED, "Failed to set file pointer when extending file: %s. win32 error %llu", copy.data, win32_error_code);
+			return 0;
+		}
+
+		if (!SetEndOfFile(handle))
+		{
+			uint64_t win32_error_code = GetLastError();
+			_cf_make_error(CF_ERROR_TYPE_FILE_RESIZE_FAILED, "Failed to set end of file when extending file: %s. win32 error %llu", copy.data, win32_error_code);
+			return 0;
+		}
+
 		CloseHandle(handle);
 		return 1;
 	}
@@ -47,30 +64,72 @@ CF_File *cf_file_open(CC_String path)
 	if (handle_file == INVALID_HANDLE_VALUE)
 	{
 		_cf_make_error(CF_ERROR_TYPE_FILE_OPENING_FAILED, "Failed to open file: %s.", path_copy.data);
-		cc_string_destroy(path_copy);
-		return NULL;
+		goto path_copy_destroy;
 	}
 	
 	// find file size
 	uint64_t file_size;
 	GetFileSizeEx(handle_file, (PLARGE_INTEGER)&file_size);
 
+	if (file_size == 0)
+	{
+		_cf_make_error(CF_ERROR_TYPE_FILE_OPENING_FAILED, "Cannot open file with size of 0. %s", path_copy.data);
+		goto file_handle_close;
+	}
+
+	// open file mapping
+	uint32_t high_order_size = (uint32_t)((file_size & 0xFFFFFFFF00000000) >> 32);
+	uint32_t low_order_size = (uint32_t)(file_size & 0xFFFFFFFF);
+	HANDLE handle_mapping = CreateFileMappingW(handle_file, NULL, PAGE_READWRITE, high_order_size, low_order_size, NULL);
+	if (handle_mapping == NULL)
+	{
+		_cf_make_error(CF_ERROR_TYPE_FILE_VIEW_CREATION_FAILED, "Failed to create file mapping.");
+		goto file_handle_close;
+	}
+
+	void *data = MapViewOfFile(handle_mapping, FILE_MAP_ALL_ACCESS, 0, 0, (SIZE_T)file_size);
+	if (data == NULL)
+	{
+		_cf_make_error(CF_ERROR_TYPE_FILE_VIEW_CREATION_FAILED, "Failed to open view of file.");
+		uint64_t error = GetLastError();
+		printf("Error_code = %llu\n", error);
+		goto file_handle_mapping_close;
+	}
+
 	// allocating CF_File
 	CF_File *file = malloc(sizeof(*file));
 
 	file->path = path_copy;
 	file->handle_file = handle_file;
+	file->handle_mapping = handle_mapping;
 	file->size = file_size;
-	file->file_views = cc_unordered_set_create(sizeof(CF_FileView *), 2);
+	file->data = data;
 
 	return file;
+
+	// error handling
+
+file_handle_mapping_close:
+	CloseHandle(handle_mapping);
+file_handle_close:
+	CloseHandle(handle_file);
+path_copy_destroy:
+	cc_string_destroy(path);
+
+	return NULL;
 }
 
 uint64_t cf_file_close(CF_File *file)
 {
-	for (CF_FileView **view = cc_unordered_set_iterator_begin(file->file_views); view != cc_unordered_set_iterator_end(file->file_views); view = cc_unordered_set_iterator_next(file->file_views, view))
+	if (file->data != NULL)
 	{
-		cf_file_view_close(*view);
+		FlushViewOfFile(file->data, 0);
+		UnmapViewOfFile(file->data);
+	}
+
+	if (file->handle_mapping != NULL)
+	{
+		CloseHandle(file->handle_mapping);
 	}
 
 	if (file->handle_file != NULL)
@@ -87,12 +146,15 @@ uint64_t cf_file_close(CF_File *file)
 
 uint64_t cf_file_resize(CF_File *file, uint64_t size)
 {
-	for (CF_FileView **view = cc_unordered_set_iterator_begin(file->file_views); view != cc_unordered_set_iterator_end(file->file_views); view = cc_unordered_set_iterator_next(file->file_views, view))
+	if (file->data != NULL)
 	{
-		CF_FileView *_view = *view;
-		FlushViewOfFile(_view->data, 0);
-		UnmapViewOfFile(_view->data);
-		CloseHandle(_view->handle_mapping);
+		FlushViewOfFile(file->data, 0);
+		UnmapViewOfFile(file->data);
+	}
+
+	if (file->handle_mapping != NULL)
+	{
+		CloseHandle(file->handle_mapping);
 	}
 	
 	LARGE_INTEGER li_size = { .QuadPart = size };
@@ -117,28 +179,23 @@ uint64_t cf_file_resize(CF_File *file, uint64_t size)
 
 	file->size = size;
 
-	for (CF_FileView **view = cc_unordered_set_iterator_begin(file->file_views); view != cc_unordered_set_iterator_end(file->file_views); view = cc_unordered_set_iterator_next(file->file_views, view))
+	// open file mapping
+	uint32_t high_order_size = (uint32_t)((file->size & 0xFFFFFFFF00000000) >> 32);
+	uint32_t low_order_size = (uint32_t)(file->size & 0xFFFFFFFF);
+	file->handle_mapping = CreateFileMappingW(file->handle_file, NULL, PAGE_READWRITE, high_order_size, low_order_size, NULL);
+	if (file->handle_mapping == NULL)
 	{
-		CF_FileView *_view = *view;
-		uint32_t high_order_size = (uint32_t)((_view->size & 0xFFFFFFFF00000000) >> 32);
-		uint32_t low_order_size = (uint32_t)(_view->size & 0xFFFFFFFF);
-		_view->handle_mapping = CreateFileMapping(file->handle_file, NULL, PAGE_READWRITE, high_order_size, low_order_size, NULL);
-		if (_view->handle_mapping == NULL)
-		{
-			_cf_make_error(CF_ERROR_TYPE_FILE_VIEW_CREATION_FAILED, "Failed to create file mapping.");
-			return 0;
-		}
+		_cf_make_error(CF_ERROR_TYPE_FILE_VIEW_CREATION_FAILED, "Failed to create file mapping.");
+		return 0;
+	}
 
-		uint32_t high_order_start = (uint32_t)((_view->start & 0xFFFFFFFF00000000) >> 32);
-		uint32_t low_order_start = (uint32_t)(_view->start & 0xFFFFFFFF);
-		_view->data = MapViewOfFile(_view->handle_mapping, FILE_MAP_ALL_ACCESS, high_order_start, low_order_start, (SIZE_T)_view->size);
-		if (_view->data == NULL)
-		{
-			CloseHandle(_view->handle_mapping);
-			_view->handle_mapping = NULL;
-			_cf_make_error(CF_ERROR_TYPE_FILE_VIEW_CREATION_FAILED, "Failed to open view of file.");
-			return 0;
-		}
+	file->data = MapViewOfFile(file->handle_mapping, FILE_MAP_ALL_ACCESS, 0, 0, (SIZE_T)file->size);
+	if (file->data == NULL)
+	{
+		_cf_make_error(CF_ERROR_TYPE_FILE_VIEW_CREATION_FAILED, "Failed to open view of file.");
+		uint64_t error = GetLastError();
+		printf("Error_code = %llu\n", error);
+		return 0;
 	}
 
 	return 1;
