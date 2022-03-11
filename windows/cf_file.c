@@ -126,7 +126,7 @@ file_handle_mapping_close:
 file_handle_close:
 	CloseHandle(handle_file);
 path_copy_destroy:
-	cc_string_destroy(path);
+	cc_string_destroy(path_copy);
 
 	return NULL;
 }
