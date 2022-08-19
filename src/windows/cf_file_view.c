@@ -1,37 +1,41 @@
-#include "internal.h"
+#if defined _WIN32 || defined WIN32
 
-CF_FileView *cf_file_view_open(CF_File *file, uint64_t start, uint64_t size)
+#include <cf_internal.h>
+
+CF_FileView *CF_FileView_Open(CF_File *file, uint64_t start, uint64_t size)
 {
-	CF_FileView *view = malloc(sizeof(*view));
+	CF_FileView *view = CC_Malloc(sizeof(*view));
 	
 	view->file = file;
 	view->start = start;
 	view->size = (size == 0) * (file->size - start) + size;
 	view->data = (uint8_t *)file->data + start;
 
-	cc_unordered_set_insert(file->views, &view);
+	CC_UnorderedSet_Insert(file->views, &view);
 
 	return view;
 }
 
-uint64_t cf_file_view_close(CF_FileView *view)
+uint64_t CF_FileView_Close(CF_FileView *view)
 {
-	for (uint64_t i = 0; i < cc_unordered_set_count(view->file->views); i++)
+	CF_FileView_Flush(view);
+	
+	for (uint64_t i = 0; i < CC_UnorderedSet_Count(view->file->views); i++)
 	{
-		CF_FileView *_view = *((CF_FileView **)cc_unordered_set_get(view->file->views, i));
+		CF_FileView *_view = *((CF_FileView **)CC_UnorderedSet_Get(view->file->views, i));
 		if (view == _view)
 		{
-			cc_unordered_set_remove(view->file->views, i);
+			CC_UnorderedSet_Remove(view->file->views, i);
 			break;
 		}
 	}
 
-	free(view);
+	CC_Free(view);
 
 	return 1;
 }
 
-uint64_t cf_file_view_read(CF_FileView *view, uint64_t start, uint64_t size, void *data)
+uint64_t CF_FileView_Read(CF_FileView *view, uint64_t start, uint64_t size, void *data)
 {
 	if (view->data != NULL)
 	{
@@ -50,7 +54,7 @@ uint64_t cf_file_view_read(CF_FileView *view, uint64_t start, uint64_t size, voi
 	
 }
 
-uint64_t cf_file_view_write(CF_FileView *view, uint64_t start, uint64_t size, const void *data)
+uint64_t CF_FileView_Write(CF_FileView *view, uint64_t start, uint64_t size, const void *data)
 {
 	if (view->data != NULL)
 	{
@@ -68,11 +72,11 @@ uint64_t cf_file_view_write(CF_FileView *view, uint64_t start, uint64_t size, co
 	}
 }
 
-uint64_t cf_file_view_flush(CF_FileView *view)
+uint64_t CF_FileView_Flush(CF_FileView *view)
 {
 	if (view->data != NULL)
 	{
-		return FlushViewOfFile(view->data, 0);
+		return FlushViewOfFile(view->data, view->size);
 	}
 	else
 	{
@@ -81,12 +85,14 @@ uint64_t cf_file_view_flush(CF_FileView *view)
 	}
 }
 
-uint64_t cf_file_view_start_get(CF_FileView *view)
+uint64_t CF_FileView_StartGet(CF_FileView *view)
 {
 	return view->start;
 }
 
-uint64_t cf_file_view_size_get(CF_FileView *view)
+uint64_t CF_FileView_SizeGet(CF_FileView *view)
 {
 	return view->size;
 }
+
+#endif

@@ -1,30 +1,22 @@
 #if defined _WIN32 || defined WIN32
 
-#include "internal.h"
+#include <cf_internal.h>
 
-uint64_t cf_file_exists(CC_String _path)
+uint64_t CF_File_Exists(const char *path)
 {
-	CC_String path = cc_string_copy(_path);
-
-	DWORD dwAttrib = GetFileAttributesA(path.data);
-
-	cc_string_destroy(path);
+	DWORD dwAttrib = GetFileAttributesA(path);
 
 	return (dwAttrib != INVALID_FILE_ATTRIBUTES && !(dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
 }
 
-uint64_t cf_file_create(CC_String path, uint64_t size)
+uint64_t CF_File_Create(const char *path, uint64_t size)
 {
-	CC_String copy = cc_string_copy(path);
-
-	HANDLE handle = CreateFileA(copy.data, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
-
-	cc_string_destroy(copy);
+	HANDLE handle = CreateFileA(path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
 	
 	if (handle == INVALID_HANDLE_VALUE)
 	{
 		uint64_t win32_error_code = GetLastError();
-		_cf_make_error(CF_ERROR_TYPE_FILE_CREATION_FAILED, "Failed to create file: %s. win32 error %llu", copy.data, win32_error_code);
+		_cf_make_error(CF_ERROR_TYPE_FILE_CREATION_FAILED, "Failed to create file: %s. win32 error %llu", path, win32_error_code);
 		return 0;
 	}
 	else
@@ -34,14 +26,14 @@ uint64_t cf_file_create(CC_String path, uint64_t size)
 		if (!SetFilePointerEx(handle, li_size, (LARGE_INTEGER *)&size, FILE_BEGIN))
 		{
 			uint64_t win32_error_code = GetLastError();
-			_cf_make_error(CF_ERROR_TYPE_FILE_RESIZE_FAILED, "Failed to set file pointer when extending file: %s. win32 error %llu", copy.data, win32_error_code);
+			_cf_make_error(CF_ERROR_TYPE_FILE_RESIZE_FAILED, "Failed to set file pointer when extending file: %s. win32 error %llu", path, win32_error_code);
 			return 0;
 		}
 
 		if (!SetEndOfFile(handle))
 		{
 			uint64_t win32_error_code = GetLastError();
-			_cf_make_error(CF_ERROR_TYPE_FILE_RESIZE_FAILED, "Failed to set end of file when extending file: %s. win32 error %llu", copy.data, win32_error_code);
+			_cf_make_error(CF_ERROR_TYPE_FILE_RESIZE_FAILED, "Failed to set end of file when extending file: %s. win32 error %llu", path, win32_error_code);
 			return 0;
 		}
 
@@ -50,31 +42,25 @@ uint64_t cf_file_create(CC_String path, uint64_t size)
 	}
 }
 
-uint64_t cf_file_destroy(CC_String path)
+uint64_t CF_File_Destroy(const char *path)
 {
-	CC_String copy = cc_string_copy(path);
-
-	uint64_t success = DeleteFileA(copy.data);
+	uint64_t success = DeleteFileA(path);
 
 	if (!success)
 	{
-		_cf_make_error(CF_ERROR_TYPE_FILE_DELETION_FAILED, "Failed to delete file: %s.", copy.data);
+		_cf_make_error(CF_ERROR_TYPE_FILE_DELETION_FAILED, "Failed to delete file: %s.", path);
 	}
-
-	cc_string_destroy(copy);
 
 	return success;
 }
 
-CF_File *cf_file_open(CC_String path)
+CF_File *CF_File_Open(const char *path)
 {
-	CC_String path_copy = cc_string_copy(path);
-
 	// open file handle
-	HANDLE handle_file = CreateFileA(path_copy.data, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	HANDLE handle_file = CreateFileA(path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (handle_file == INVALID_HANDLE_VALUE)
 	{
-		_cf_make_error(CF_ERROR_TYPE_FILE_OPENING_FAILED, "Failed to open file: %s.", path_copy.data);
+		_cf_make_error(CF_ERROR_TYPE_FILE_OPENING_FAILED, "Failed to open file: %s.", path);
 		goto path_copy_destroy;
 	}
 	
@@ -84,7 +70,7 @@ CF_File *cf_file_open(CC_String path)
 
 	if (file_size == 0)
 	{
-		_cf_make_error(CF_ERROR_TYPE_FILE_OPENING_FAILED, "Cannot open file with size of 0. %s", path_copy.data);
+		_cf_make_error(CF_ERROR_TYPE_FILE_OPENING_FAILED, "Cannot open file with size of 0. %s", path);
 		goto file_handle_close;
 	}
 
@@ -108,14 +94,14 @@ CF_File *cf_file_open(CC_String path)
 	}
 
 	// allocating CF_File
-	CF_File *file = malloc(sizeof(*file));
+	CF_File *file = CC_Malloc(sizeof(*file));
 
-	file->path = path_copy;
+	file->path = CC_String_Copy(path);
 	file->handle_file = handle_file;
 	file->handle_mapping = handle_mapping;
 	file->size = file_size;
 	file->data = data;
-	file->views = cc_unordered_set_create(sizeof(CF_FileView *), 16);
+	file->views = CC_UnorderedSet_Create(sizeof(CF_FileView *), 16);
 
 	return file;
 
@@ -126,12 +112,11 @@ file_handle_mapping_close:
 file_handle_close:
 	CloseHandle(handle_file);
 path_copy_destroy:
-	cc_string_destroy(path_copy);
 
 	return NULL;
 }
 
-uint64_t cf_file_close(CF_File *file)
+uint64_t CF_File_Close(CF_File *file)
 {
 	if (file->data != NULL)
 	{
@@ -149,14 +134,14 @@ uint64_t cf_file_close(CF_File *file)
 		CloseHandle(file->handle_file);
 	}
 
-	cc_string_destroy(file->path);
+	CC_String_Destroy(file->path);
 
-	free(file);
+	CC_Free(file);
 
 	return 1;
 }
 
-uint64_t cf_file_resize(CF_File *file, uint64_t size)
+uint64_t CF_File_Resize(CF_File *file, uint64_t size)
 {
 	if (file->data != NULL)
 	{
@@ -172,20 +157,20 @@ uint64_t cf_file_resize(CF_File *file, uint64_t size)
 	LARGE_INTEGER li_size = { .QuadPart = size };
 	if (!SetFilePointerEx(file->handle_file, li_size, (LARGE_INTEGER *)&size, FILE_BEGIN))
 	{
-		_cf_make_error(CF_ERROR_TYPE_FILE_RESIZE_FAILED, "Failed to set file pointer when extending file: %s", file->path.data);
+		_cf_make_error(CF_ERROR_TYPE_FILE_RESIZE_FAILED, "Failed to set file pointer when extending file: %s", file->path);
 		return 0;
 	}
 
 	if (!SetEndOfFile(file->handle_file))
 	{
-		_cf_make_error(CF_ERROR_TYPE_FILE_RESIZE_FAILED, "Failed to set end of file when extending file: %s", file->path.data);
+		_cf_make_error(CF_ERROR_TYPE_FILE_RESIZE_FAILED, "Failed to set end of file when extending file: %s", file->path);
 		return 0;
 	}
 
 	LARGE_INTEGER li_start = { .QuadPart = 0 };
 	if (!SetFilePointerEx(file->handle_file, li_start, NULL, FILE_BEGIN))
 	{
-		_cf_make_error(CF_ERROR_TYPE_FILE_RESIZE_FAILED, "Failed to set file pointer when extending file: %s", file->path.data);
+		_cf_make_error(CF_ERROR_TYPE_FILE_RESIZE_FAILED, "Failed to set file pointer when extending file: %s", file->path);
 		return 0;
 	}
 
@@ -210,7 +195,7 @@ uint64_t cf_file_resize(CF_File *file, uint64_t size)
 		return 0;
 	}
 
-	for (CF_FileView **view_ptr = cc_unordered_set_iterator_begin(file->views); view_ptr != cc_unordered_set_iterator_end(file->views); view_ptr = cc_unordered_set_iterator_next(file->views, view_ptr))
+	for (CF_FileView **view_ptr = CC_UnorderedSet_IteratorBegin(file->views); view_ptr != CC_UnorderedSet_IteratorEnd(file->views); view_ptr = CC_UnorderedSet_IteratorNext(file->views, view_ptr))
 	{
 		CF_FileView *view = *view_ptr;
 		view->data = (uint8_t *)file->data + view->start;
@@ -219,7 +204,7 @@ uint64_t cf_file_resize(CF_File *file, uint64_t size)
 	return 1;
 }
 
-uint64_t cf_file_size_get(CF_File *file)
+uint64_t CF_File_SizeGet(CF_File *file)
 {
 	return file->size;
 }

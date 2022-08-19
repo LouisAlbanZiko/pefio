@@ -1,4 +1,4 @@
-#include "internal.h"
+#include "cf_internal.h"
 
 #define ERROR_STRING_SIZE ((uint64_t)1024)
 
@@ -10,10 +10,7 @@ CF_Error cf_get_last_error()
 	CF_Error error =
 	{
 		.error_type = _cf_error_type,
-		.message = {
-			.data = _cf_error_message,
-			.length = strlen(_cf_error_message)
-		}
+		.message = _cf_error_message
 	};
 	return error;
 }

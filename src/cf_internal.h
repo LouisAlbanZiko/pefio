@@ -1,14 +1,15 @@
 #ifndef _C_FILE_INTERNAL_H_
 #define _C_FILE_INTERNAL_H_
 
-#include "c_file.h"
+#include <c_core/c_core.h>
+#include <c_file/c_file.h>
 
 #ifdef __unix__
 	
 #elif defined _WIN32 || defined WIN32
 #include <windows.h>
 #else
-#ERROR platform not found
+#ERROR platform not implemented
 #endif
 
 #ifdef __unix__
@@ -17,7 +18,7 @@
 
 typedef struct CF_File
 {
-	CC_String path;
+	char *path;
 	HANDLE handle_file;
 	HANDLE handle_mapping;
 	uint64_t size;
